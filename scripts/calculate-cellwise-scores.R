@@ -65,7 +65,14 @@ obs = project(obs, crs(parks5k))
 
 # Density map ------------------------------------------------------------------
 
+# save this for the completeness calculation (without sqrt)
+map_obsdens = rasterize(obs, parks5k, fun = "length") 
+map_obsdens[is.na(map_obsdens)] <- 0
+map_obsdens[is.na(parks5k)] <- NA
+saveRDS(map_obsdens, "outputs/inatdensity_amphibians_bcparks.rds")
+
 map_obsdens = rasterize(obs, parks5k, fun = "length") |> sqrt()
+map_obsdens = sqrt(map_obsdens)
 map_obsdens[is.na(map_obsdens)] <- 0
 map_obsdens[is.na(parks5k)] <- NA
 plot(map_obsdens)
@@ -128,7 +135,10 @@ ggsave("figures/clim_grid_count.png", width = 5, height = 5)
 
 # Completeness score -----------------------------------------------------------
 
-
+# calculated in estimate_completeness.R
+map_comp = readRDS("outputs/spatial-layers/scores_map_coverage.rds")
+# invert so high coverage becomes low score
+map_comp = 1-map_comp
 
 # Taxonomic coverage scores ====================================================
 
@@ -148,7 +158,8 @@ scores = data.frame(
   "cellID" = cells(parks5k),
   "score_spatial_density" = values(map_obsdens) |> na.omit() |> as.vector(),
   "score_spatial_lastupdate" = values(map_lastupdate) |> na.omit() |> as.vector(),
-  "score_spatial_climfreq" = values(map_climfrequency) |> na.omit() |> as.vector()
+  "score_spatial_climfreq" = values(map_climfrequency) |> na.omit() |> as.vector(),
+  "score_spatial_completeness" = values(map_comp) |> na.omit() |> as.vector()
 )
 
 # scale columns between 0 and 1
@@ -159,7 +170,7 @@ scores_scaled = scores |>
   mutate(across(2:score_spatial_climfreq, ~ 1 - .x))
 
 # Weight importance of the scores
-scores_weights = rep(1, ncol) / c(ncol(scores_scaled)-1)
+scores_weights = rep(1, c(ncol(scores_scaled)-1)) / c(ncol(scores_scaled)-1)
 
 # Tally total score per cell
 scores_weighted = scores_scaled 
@@ -183,7 +194,6 @@ saveRDS(list("scaled" = scores_scaled,
 # map the scores 
 map_scores = parks5k
 map_scores[parks5k==1] <- scores_total
-plot(map_scores)
 
 # pretty maps ===================================================================
 
@@ -197,10 +207,12 @@ ggsave("figures/scores_spatialpriorities.png", width = 9, height = 8)
 # save maps of the scaled scores
 map_spatial = c("obsdensity" = map_scores, 
                 "lastupdate" = map_scores, 
-                "climfreq" = map_scores)
+                "climfreq" = map_scores,
+                "completeness" = map_scores)
 map_spatial$obsdensity[parks5k==1] <- scores_scaled$score_spatial_density
 map_spatial$lastupdate[parks5k==1] <- scores_scaled$score_spatial_lastupdate
 map_spatial$climfreq[parks5k==1] <- scores_scaled$score_spatial_climfreq
+map_spatial$completeness[parks5k==1] <- scores_scaled$score_spatial_completeness
 map_spatial$total = map_scores
 saveRDS(map_spatial, "outputs/spatial-layers/scores_map_spatial.rds")
 
@@ -214,6 +226,6 @@ for(i in 1:length(map_spatial)){
   ggsave(plot = p[[i]], filename = paste0("figures/scores_spatialpriorities_",names(map_spatial)[i],".png"), width = 9, height = 8)
   
 }
-patchwork::wrap_plots(p, nrow = 2, ncol = 2)
+patchwork::wrap_plots(p[1:4], nrow = 2, ncol = 2)
 ggsave("figures/scores_spatialpriorities_eachscore.png", width = 9, height = 8)
 
