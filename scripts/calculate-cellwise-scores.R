@@ -49,12 +49,12 @@ plot(clim)
 
 # convert data into points layer
 obs = dat |>
-  filter(captive_cultivated == "false",
+  dplyr::filter(captive_cultivated == "false",
          iconic_taxon_name == "Amphibia") |> ## FILTER TO MAKE THIS LIGHT FOR AN EXAMPLE
-  select(c(latitude, longitude, year, month, day,
+  dplyr::select(c(latitude, longitude, year, month, day,
            coordinates_obscured, iconic_taxon_name, 
            scientific_name, dataset)) |>
-  mutate_at(vars("longitude", "latitude"), as.numeric) |>
+  dplyr::mutate_at(vars("longitude", "latitude"), as.numeric) |>
   terra::vect(geom = c("longitude", "latitude"), crs = "epsg:4326")
 
 # project obs to match the grid
