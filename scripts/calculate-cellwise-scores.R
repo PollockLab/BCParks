@@ -12,13 +12,13 @@ theme_set(theme_minimal())
 # Load data --------------------------------------------------------------------
 
 # load base grid
-base5k = terra::rast("data/for_shiny/data/canada-basegrids/canada.base.5k.tiff")
+base5k = terra::rast("data/for_scoring/canada-basegrids/canada.base.5k.tiff")
 
 # load observations (this is from iNat downloads)
-dat = readRDS("data/for_shiny/data/BCParks_obs_unique_with_BigTeams_flagged.RDS")
+dat = readRDS("data/for_scoring/iNaturalist/BCParks_obs_unique_with_BigTeams_flagged.RDS")
 
 # load bc parks polygons
-parks = terra::vect("data/for_shiny/data/bc-parks-pol/bc_parks.shp")
+parks = terra::vect("data/for_scoring/bc-parks-pol/bc_parks.shp")
 
 # make base grid with 1 and 0 to outline BC Parks
 base5k = project(base5k, crs(parks))
@@ -35,8 +35,8 @@ parks0[parks5k == 1] <- 0
 ## Climate ----
 # import mean annual temperature and precipitation
 clim = c(
-  terra::rast("~/Documents/GitHub/sampling-scenarios/sampling-scenarios/data-raw/climate/wc2.1_10m/wc2.1_10m_bio_1.tif"),
-  terra::rast("~/Documents/GitHub/sampling-scenarios/sampling-scenarios/data-raw/climate/wc2.1_10m/wc2.1_10m_bio_12.tif")
+  terra::rast("for_scoring/climate/wc2.1_10m/wc2.1_10m_bio_1.tif"),
+  terra::rast("for_scoring/climate/wc2.1_10m/wc2.1_10m_bio_12.tif")
 )
 clim <- project(clim, crs(parks))
 clim <- mask(clim, parks)
@@ -228,4 +228,3 @@ for(i in 1:length(map_spatial)){
 }
 patchwork::wrap_plots(p[1:4], nrow = 2, ncol = 2)
 ggsave("figures/scores_spatialpriorities_eachscore.png", width = 9, height = 8)
-
