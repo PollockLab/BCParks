@@ -1,4 +1,7 @@
-# Script to plot and explore BC parks data
+# Script to score each cell of the map according to spatial criteria
+# Dataset: BC parks iNaturalist (subset for amphibians)
+# Criteria: observation density, last sample date, climate frequency, 
+# estimated completeness, SDM disagreement
 
 library(terra)
 library(tidyterra)
@@ -35,8 +38,8 @@ parks0[parks5k == 1] <- 0
 ## Climate ----
 # import mean annual temperature and precipitation
 clim = c(
-  terra::rast("for_scoring/climate/wc2.1_10m/wc2.1_10m_bio_1.tif"),
-  terra::rast("for_scoring/climate/wc2.1_10m/wc2.1_10m_bio_12.tif")
+  terra::rast("data/for_scoring/climate/wc2.1_10m_bio_1.tif"),
+  terra::rast("data/for_scoring/climate/wc2.1_10m_bio_12.tif")
 )
 clim <- project(clim, crs(parks))
 clim <- mask(clim, parks)
@@ -60,6 +63,8 @@ obs = dat |>
 # project obs to match the grid
 obs = project(obs, crs(parks5k))
 saveRDS(obs, "outputs/inatobs_amphibians_bcparks.rds")
+
+
 
 # Spatial coverage scores ======================================================
 
@@ -102,13 +107,14 @@ abline(v = x_breaks, col="red")
 
 # Cut into bins and count 
 BINS_range <- data.frame(
-    "x_bin" = cut(values(clim_scale[[1]]), breaks = x_breaks, include.lowest = FALSE),
-    "y_bin"= cut(values(clim_scale[[2]]), breaks = y_breaks, include.lowest = FALSE)
+    "x_bin" = cut(values(clim_scale[[1]]), breaks = x_breaks, include.lowest = TRUE),
+    "y_bin"= cut(values(clim_scale[[2]]), breaks = y_breaks, include.lowest = TRUE)
   ) |> na.omit()
 BINS_cellcount = count(BINS_range, x_bin, y_bin)
 BINS = left_join(BINS_range, BINS_cellcount)
+
 clim_freq = clim_scale[[1]]
-values(clim_freq) <- BINS$n
+clim_freq[!is.na(clim_freq)] <- BINS$n
 clim_freq[is.na(parks5k)] <- NA
 plot(clim_freq)
 # save the map
@@ -140,60 +146,78 @@ map_comp = readRDS("outputs/spatial-layers/scores_map_coverage.rds")
 # invert so high coverage becomes low score
 map_comp = 1-map_comp
 
-# Taxonomic coverage scores ====================================================
-
 
 
 # Optional purpose-oriented scores =============================================
 
 # SDM discrepancy ----
 
-# sdm_cv = terra::rast("~/Documents/GitHub/BTG-analyse-the-gap/data/heavy/noah-uncertainty/cv_8meth.tif")
+cv = terra::rast("data/for_scoring/sdm-cv/current_cv.tif")
+cv = project(cv, crs(map_obsdens))
+cv_crop = crop(cv, map_obsdens)
+cv_crop = resample(cv_crop, map_obsdens)
+plot(cv_crop)
+cv_crop[is.na(map_obsdens)] <- NA
+map_modeldisagree = cv_crop
 
+# make list of maps
+maps = c("score_spatial_density" = map_obsdens, 
+         "score_spatial_lastupdate" = map_lastupdate, 
+         "score_spatial_climfreq" = map_climfrequency, 
+         "score_spatial_completeness" = map_comp, 
+         "score_spatial_modeldisagree" = map_modeldisagree) |> 
+  rast()
+
+# function to rescale maps
+rescale_map = function(map) {
+  vals = values(map) |> as.vector()
+  rescaled_vals = (vals-min(vals, na.rm = T))/diff(range(vals, na.rm=T))
+  values(map) <- rescaled_vals
+  return(map)
+}
+maps_rescaled = sapply(maps, rescale_map) |> rast()
+saveRDS(maps_rescaled, "outputs/spatial-layers/scores_spatial_maps.rds")
 
 
 # Make a scores table ----------------------------------------------------------
 
-scores = data.frame(
-  "cellID" = cells(parks5k),
-  "score_spatial_density" = values(map_obsdens) |> na.omit() |> as.vector(),
-  "score_spatial_lastupdate" = values(map_lastupdate) |> na.omit() |> as.vector(),
-  "score_spatial_climfreq" = values(map_climfrequency) |> na.omit() |> as.vector(),
-  "score_spatial_completeness" = values(map_comp) |> na.omit() |> as.vector()
-)
+scores = values(maps_rescaled) |> 
+  as.data.frame() |> na.omit() 
 
 # scale columns between 0 and 1
 scores_scaled = scores |>
-  # scale between 0 and 1
-  mutate(across(2:score_spatial_climfreq, rescale)) |>
-  # reverse scores so 1 = high priority and  0 = low priority
-  mutate(across(2:score_spatial_climfreq, ~ 1 - .x))
+  # reverse scores so all follow 1 = high priority and  0 = low priority
+  mutate(across(-c(score_spatial_completeness,
+                   score_spatial_modeldisagree), ~ 1 - .x))
 
 # Weight importance of the scores
-scores_weights = rep(1, c(ncol(scores_scaled)-1)) / c(ncol(scores_scaled)-1)
+scores_weights = rep(1, ncol(scores_scaled)) / ncol(scores_scaled) # equal for now!
 
 # Tally total score per cell
 scores_weighted = scores_scaled 
-for(i in 2:ncol(scores_weighted)){
-  scores_weighted[,i] = scores_weighted[,i]*scores_weights[i-1]
+for(i in 1:ncol(scores_weighted)){
+  scores_weighted[,i] = scores_weighted[,i]*scores_weights[i]
 }
-scores_m = as.matrix(scores_weighted[,-1])
+scores_m = as.matrix(scores_weighted)
 scores_total = rowSums(scores_m)
 
 # make a clean table
 scores_df = scores_scaled
 scores_df$total = scores_total
+scores_df$cellID = cells(maps_rescaled)
 write.csv(scores_df, "outputs/scores_spatial.csv")
 
 # save output
 saveRDS(list("scaled" = scores_scaled,
              "weighted" = scores_weighted,
              "total" = scores_total), "outputs/spatial-layers/scores_spatial.rds")
-
+# basic sum (no weights) of all the layers
+total = sum(maps_rescaled) |> sapply(rescale_map) |> rast()
 
 # map the scores 
-map_scores = parks5k
-map_scores[parks5k==1] <- scores_total
+map_scores = total
+map_scores[!is.na(map_scores)] <- scores_total
+saveRDS(map_scores, "outputs/spatial-layers/scores_spatial_total.rds")
 
 # pretty maps ===================================================================
 
@@ -204,27 +228,16 @@ ggplot() +
   labs(title = "Total spatial priority score")
 ggsave("figures/scores_spatialpriorities.png", width = 9, height = 8)
 
-# save maps of the scaled scores
-map_spatial = c("obsdensity" = map_scores, 
-                "lastupdate" = map_scores, 
-                "climfreq" = map_scores,
-                "completeness" = map_scores)
-map_spatial$obsdensity[parks5k==1] <- scores_scaled$score_spatial_density
-map_spatial$lastupdate[parks5k==1] <- scores_scaled$score_spatial_lastupdate
-map_spatial$climfreq[parks5k==1] <- scores_scaled$score_spatial_climfreq
-map_spatial$completeness[parks5k==1] <- scores_scaled$score_spatial_completeness
-map_spatial$total = map_scores
-saveRDS(map_spatial, "outputs/spatial-layers/scores_map_spatial.rds")
-
 p = list()
-for(i in 1:length(map_spatial)){
+for(i in 1:nlyr(maps_rescaled)){
   p[[i]] = ggplot() +
-    tidyterra::geom_spatraster(data = map_spatial[[i]]) +
-    scale_fill_viridis_c(option = "plasma", limits = c(0,1), direction = -1,
+    tidyterra::geom_spatraster(data = maps_rescaled[[i]]) +
+    scale_fill_viridis_c(option = "turbo", limits = c(0,1), direction = 1,
                          na.value = "transparent", name = "VOI") +
-    labs(title = names(map_spatial)[i])
-  ggsave(plot = p[[i]], filename = paste0("figures/scores_spatialpriorities_",names(map_spatial)[i],".png"), width = 9, height = 8)
+    labs(title = gsub("score_spatial_", "", names(maps_rescaled)[i]))
+  ggsave(plot = p[[i]], filename = paste0("figures/scores_spatialpriorities_",names(maps_rescaled)[i],".png"), width = 9, height = 8)
   
 }
-patchwork::wrap_plots(p[1:4], nrow = 2, ncol = 2)
+patchwork::wrap_plots(p, nrow = 3, ncol = 2)
 ggsave("figures/scores_spatialpriorities_eachscore.png", width = 9, height = 8)
+
