@@ -23,7 +23,7 @@ parks = terra::vect("data/for_shiny/data/bc-parks-pol/bc_parks.shp")
 # make base grid with 1 and 0 to outline BC Parks
 base5k = project(base5k, crs(parks))
 parks5k = rasterize(parks, base5k, touches = TRUE) |> trim()
-terra::writeRaster(parks5k, "outputs/spatial-layers/parks5k.tif")
+# terra::writeRaster(parks5k, "outputs/spatial-layers/parks5k.tif")
 
 # make a park = 0 layer to add scores to!
 parks0 = parks5k
@@ -59,7 +59,7 @@ obs = dat |>
 
 # project obs to match the grid
 obs = project(obs, crs(parks5k))
-
+saveRDS(obs, "outputs/inatobs_amphibians_bcparks.rds")
 
 # Spatial coverage scores ======================================================
 

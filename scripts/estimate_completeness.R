@@ -6,17 +6,22 @@ library(sf)
 library(terra)
 library(iNEXT)
 library(arrow)
-library(betareg)
+library(nlme)
+library(drc)
 
 theme_set(ggpubr::theme_pubr())
 
-# read density map
+# read outputed data files
+obs = readRDS("outputs/inatobs_amphibians_bcparks.rds")
 map_obsdens = readRDS("outputs/inatdensity_amphibians_bcparks.rds")
+parks5k = rast("outputs/spatial-layers/parks5k.tif")
+parks5k = project(parks5k, crs(map_obsdens))
+parks5k = trim(parks5k)
 
 ## Select well-sampled cells ===================================================
 
 hist(map_obsdens)
-quantile(values(map_obsdens), na.rm = T)
+quantile(values(map_obsdens), na.rm = T, probs = c(seq(0,1,by=.05)))
 
 # define threshold to find "well sampled" cells
 sample_threshold = 90
@@ -90,21 +95,29 @@ ggplot(data = mdf) +
   hrbrthemes::theme_ipsum_es()
 ggsave("figures/accumulationcurve_coverageVSeffort_highestsampledcells_amphibians.png")
 
-# model the curves together
-m = betareg::betareg(coverage ~ n_individuals + 0, 
-                     data = mdf, link = "logit")
+# Model the curves together ----------------------------------------------------
+# Michaelis-Menten could also work here
+m <- drc::drm(coverage ~ n_individuals, fct = MM.2(), data = mdf)
+summary(m)
+plot(m)
+
+# predict the model (fitted values)
 pred = predict(m, type = "response")
 predvar = predict(m, type = "variance")
-
-# plot the model predictions
-plot(pred ~ mdf$n_individuals, col = "red", ylim = c(0,1))
-points(pred-predvar ~ mdf$n_individuals, col = "blue")
-points(pred+predvar ~ mdf$n_individuals, col = "blue")
-points(mdf$coverage ~ mdf$n_individuals)
-# we'll need a better model here... but let's use it for now.
-
-# model the variance too just to see
-plot(predvar ~ mdf$n_individuals, col = "blue")
+plot_df = data.frame(
+  "group" = mdf$group,
+  "n_individuals" = mdf$n_individuals,
+  "obs_values" = mdf$coverage,
+  "fitted_values" = pred,
+  "fitted_var" = predvar
+)
+ggplot(data = plot_df,
+       aes(x = n_individuals)) +
+  geom_line(aes(y = obs_values, col = group), linewidth = .3) +
+  geom_line(aes(y = fitted_values), linewidth = 1) +
+  coord_cartesian(ylim = c(0,1))
+ggsave("figures/model_curve_prediction_inatamphibians.png", 
+       width = 7.6, height = 6.4)
 
 
 # Predict coverage for the remaining cells -------------------------------------
@@ -122,12 +135,9 @@ preds = predict(m, type = "response",
 # join the the table
 completeness$coverage = preds
 
-# cells that were empty (0 density) should be 0 coverage too
-completeness$coverage[which(completeness$density == 0)] <- 0
-
 # map the completeness on the map
 map_coverage = map_obsdens
-map_coverage[parks5k==1] <- completeness$coverage
+map_coverage[map_obsdens>=0] <- completeness$coverage
 plot(map_coverage)
 saveRDS(map_coverage, "outputs/spatial-layers/scores_map_coverage.rds")
 
