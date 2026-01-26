@@ -1,4 +1,4 @@
-"","score_spatial_density","score_spatial_lastupdate","score_spatial_climfreq","score_spatial_completeness","score_spatial_modeldisagree","total","cellID"
+"","priority_density","priority_lastupdate","priority_climfreq","priority_coverage","priority_modeldisagree","total","cellID"
 "1",1,1,0.976798143851508,1,0.871201745559917,0.969599977882285,1
 "2",1,1,0.967517401392111,1,0.867024966055708,0.966908473489564,2
 "3",1,1,0.967517401392111,1,0.892837095518186,0.97207089938206,3

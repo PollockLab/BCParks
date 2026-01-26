@@ -161,11 +161,11 @@ cv_crop[is.na(map_obsdens)] <- NA
 map_modeldisagree = cv_crop
 
 # make list of maps
-maps = c("score_spatial_density" = map_obsdens, 
-         "score_spatial_lastupdate" = map_lastupdate, 
-         "score_spatial_climfreq" = map_climfrequency, 
-         "score_spatial_completeness" = map_comp, 
-         "score_spatial_modeldisagree" = map_modeldisagree) |> 
+maps = c("priority_density" = map_obsdens, 
+         "priority_lastupdate" = map_lastupdate, 
+         "priority_climfreq" = map_climfrequency, 
+         "priority_coverage" = map_comp, 
+         "priority_modeldisagree" = map_modeldisagree) |> 
   rast()
 
 # function to rescale maps
@@ -187,8 +187,8 @@ scores = values(maps_rescaled) |>
 # scale columns between 0 and 1
 scores_scaled = scores |>
   # reverse scores so all follow 1 = high priority and  0 = low priority
-  mutate(across(-c(score_spatial_completeness,
-                   score_spatial_modeldisagree), ~ 1 - .x))
+  mutate(across(-c(priority_coverage,
+                   priority_modeldisagree), ~ 1 - .x))
 
 # Weight importance of the scores
 scores_weights = rep(1, ncol(scores_scaled)) / ncol(scores_scaled) # equal for now!
