@@ -58,3 +58,4 @@ data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp_sf.prj
 data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp_sf.dbf
 data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp.parquet
 /data/isaac_prioritymaps
+/outputs/report-pmtiles
