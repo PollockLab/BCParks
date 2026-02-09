@@ -50,3 +50,10 @@ rsconnect/
 /data/butterfly-private
 /data/BC_Parks_Big_Teams
 /data/for_reporting/private
+/data/polygons
+data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp_sf.shx
+data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp_sf.shp
+data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp_sf.rds
+data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp_sf.prj
+data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp_sf.dbf
+data/processed/inat_bc_PRIVATEDONOTSHARE_cleanedsp.parquet
