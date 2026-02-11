@@ -137,15 +137,17 @@ for(iconic_taxa in unique(inat_sf$iconic_taxon_name)[-14]){
   
   # plot the ratio maps ----------------------------------------------------------
   
+  for(r in 1:length(resolutions)){
+  
   # get common color limits
-  temp1 = maps_taxa$All[[3]]$ratio |> range(na.rm = T)
-  temp2 = maps_taxa$Teams[[3]]$ratio |> range(na.rm = T)
-  temp3 = maps_taxa$Visitors[[3]]$ratio |> range(na.rm = T)
+  temp1 = maps_taxa$All[[r]]$ratio |> range(na.rm = T)
+  temp2 = maps_taxa$Teams[[r]]$ratio |> range(na.rm = T)
+  temp3 = maps_taxa$Visitors[[r]]$ratio |> range(na.rm = T)
   temp = rbind(temp1, temp2, temp3)
   lims = c(min(temp[,1]), max(temp[,2]))
   
   A = ggplot() +
-    geom_sf(data = maps_taxa$All[[3]], aes(fill = ratio), linewidth = .3) +
+    geom_sf(data = maps_taxa$All[[r]], aes(fill = ratio), linewidth = .3) +
     labs(title = "All") +
     scale_fill_viridis_c(option = "plasma", 
                          name = "Relative\ngain (%)",
@@ -155,7 +157,7 @@ for(iconic_taxa in unique(inat_sf$iconic_taxon_name)[-14]){
     theme(legend.position = "none")
   
   B = ggplot() +
-    geom_sf(data = maps_taxa$Teams[[3]], aes(fill = ratio), linewidth = .3) +
+    geom_sf(data = maps_taxa$Teams[[r]], aes(fill = ratio), linewidth = .3) +
     labs(title = "Teams") +
     scale_fill_viridis_c(option = "plasma", 
                          name = "Relative\ngain (%)",
@@ -165,7 +167,7 @@ for(iconic_taxa in unique(inat_sf$iconic_taxon_name)[-14]){
     theme(legend.position = "none")
   
   C = ggplot() +
-    geom_sf(data = maps_taxa$Visitors[[3]], aes(fill = ratio), linewidth = .3) +
+    geom_sf(data = maps_taxa$Visitors[[r]], aes(fill = ratio), linewidth = .3) +
     labs(title = "Visitors") +
     scale_fill_viridis_c(option = "plasma", 
                          name = "Relative\ngain (%)",
@@ -174,7 +176,16 @@ for(iconic_taxa in unique(inat_sf$iconic_taxon_name)[-14]){
                          limits = lims) +
     theme(legend.position = "right")
   A + B + C 
-  ggsave(paste0("figures/hexmap_relativegain_", iconic_taxa, ".png"), 
+  ggsave(paste0("figures/hexmap_relativegain_", iconic_taxa, "_", resolutions[r]/1000, "km.png"), 
          width = 13.2, height = 4.05)
+  }
   
 }
+
+## save pmtiles
+
+mapview::mapview(maps_taxa$All[[2]])
+
+
+maps_taxa = lapply(iconic_taxa, 
+                   function(x) readRDS(paste0("outputs/spatial-layers/hexmaps_relativegain_",x,".rds")))
