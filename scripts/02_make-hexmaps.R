@@ -14,11 +14,9 @@ inat = open_dataset("data/for_reporting/private/BCiNat_PRIVATE.parquet")
 splist = read.csv("data/for_reporting/private/BC_S-listed_spp.csv")
 # # Provincial = BC.List (filter to Blue & Red listed)
 # # National = COSEWIC 
+invasives = read.csv("data/for_reporting/BC_invasive_sp_priorities.csv", 
+                     header = FALSE)
 bc = st_read("data/polygons/bc_polygon.shp")
-# bc = st_read("~/Downloads/BC_Boundary_Terrestrial.gpkg")
-# bc = st_simplify(bc)
-# buffer_bc <- st_buffer(bc, dist = 0.1)
-#bc = st_cast(bc, to = "POLYGON")
 
 # filter to research only and keep only essential columns
 inat_sf = inat |>  
@@ -48,6 +46,35 @@ rm(temp)
 bc_albers <- st_transform(bc, 3005)
 wt_albers <- st_transform(inat_sf, 3005)
 
+## Uncomment this to make the hexmaps for subset species lists -----------------
+
+# ## Species at risk (National - COSEWIC) --------------------------------------
+# 
+# # get list of species listed in COSEWIC
+# sarN = splist |> 
+#   filter(COSEWIC %in% c("E", "T", "SC", 
+#                         "E/T", "XT", "T/SC", "XX"))
+# 
+# inat_sf = inat_sf |>
+#   filter(scientific_name %in% sarN$Scientific.Name)
+
+
+# ## Species at risk (Provincial) ------------------------------------------------
+# 
+# sarBC = splist |> 
+#   filter(BC.List %in% c("Blue", "Red"))
+# inat_sf = inat_sf |>
+#   filter(scientific_name %in% sarBC$scientific_name_cut)
+
+## Invasive species ------------------------------------------------------------
+
+invasives$scientific_name = paste(invasives$V4, invasives$V5) |> 
+  # clean up the extra spaces
+  stringr::str_squish()
+
+inat_sf = inat_sf |>
+  filter(scientific_name %in% invasives$scientific_name)
+
 
 
 # =============================================================================
@@ -69,7 +96,7 @@ names(hex_list) <- paste0("obsdens-", names(hex_list))
 
 # save rds
 saveRDS(hex_list, "outputs/report-pmtiles/obsdens-layers.rds")
-
+hex_list = readRDS("outputs/report-pmtiles/obsdens-layers.rds")
 
 
 # =============================================================================
@@ -95,76 +122,74 @@ for (res in resolutions) {
 }
 names(hex_list) <- paste0("spdens-", names(hex_list))
 names(hex_list) <- gsub("spdens-obsdens", "obsdens", names(hex_list))
-names(hex_list) <- paste0("alltaxa-", names(hex_list))
+# names(hex_list) <- paste0("alltaxa-", names(hex_list))
+# if SAR:
+#names(hex_list) <- paste0("SAR-", names(hex_list))
+# if BC SR:
+# names(hex_list) <- paste0("SARprov-", names(hex_list))
+# if invasive:
+names(hex_list) <- paste0("invasives-", names(hex_list))
 
 # save rds
-saveRDS(hex_list, "outputs/report-pmtiles/alltaxa-hex.rds")
+# saveRDS(hex_list, "outputs/report-pmtiles/alltaxa-hex.rds")
+# saveRDS(hex_list, "outputs/report-pmtiles/SAR-hex.rds")
+# saveRDS(hex_list, "outputs/report-pmtiles/SARprov-hex.rds")
+saveRDS(hex_list, "outputs/report-pmtiles/invasives-hex.rds")
 
-# make a cloud-optimized version to make the app faster
-pmtiles::pm_create(hex_list, "outputs/report-pmtiles/alltaxa-hex.pmtiles",
-                   layer_name = names(hex_list))
+## PMTILES ---------------------------------------------------------------------
 
+# read
+# hex_list = readRDS("outputs/report-pmtiles/alltaxa-hex.rds")
+# hex_list = readRDS("outputs/report-pmtiles/SAR-hex.rds")
+# hex_list = readRDS("outputs/report-pmtiles/SARprov-hex.rds")
+hex_list = readRDS("outputs/report-pmtiles/invasives-hex.rds")
 
-## Species at risk (National - COSEWIC) ----------------------------------------
+# rename files
+# names(hex_list) = gsub("SAR-obsdens-", "obsdens_all_", names(hex_list))
+# names(hex_list) = gsub("SAR-spdens-", "spdens_all_", names(hex_list))
+names(hex_list) = gsub("invasives-obsdens-", "obsdens_all_", names(hex_list))
+names(hex_list) = gsub("invasives-spdens-", "spdens_all_", names(hex_list))
 
-
-# get list of species listed in COSEWIC
-sarN = splist |> 
-  filter(COSEWIC %in% c("E", "T", "SC", 
-                        "E/T", "XT", "T/SC", "XX"))
-
-inat_sarN = inat_sf |>
-  filter(scientific_name %in% sarN$Scientific.Name)
-
-# =============================================================================
-# 4. CREATE HEXAGON GRIDS AT MULTIPLE RESOLUTIONS
-# =============================================================================
-
-resolutions <- c(5000, 10000, 25000, 50000, 100000)  # meters
-hex_list <- list()
-
-for (res in resolutions) {
-  hex <- st_make_grid(bc_albers, cellsize = res, square = FALSE)
-  hex <- st_sf(hex_id = 1:length(hex), geometry = hex)
-  hex <- hex[st_intersects(hex, bc_albers, sparse = FALSE), ]
-  hex$n_obs <- lengths(st_intersects(hex, wt_albers))
-  hex_wgs <- st_transform(hex, 4326)
-  hex_list[[paste0(res/1000, 'km')]] <- hex_wgs
+for(i in 1:length(hex_list)){
+  colnames(hex_list[[i]]) <- gsub("n_obs", "obsdens", colnames(hex_list[[i]]))
+  colnames(hex_list[[i]]) <- gsub("n_sp", "spdens", colnames(hex_list[[i]]))
+  if("hex_id" %in% colnames(hex_list[[i]])){
+  hex_list[[i]] = select(hex_list[[i]], -hex_id)
+  }
 }
-names(hex_list) <- paste0("sarN-obsdens-", names(hex_list))
 
-# save rds
-saveRDS(hex_list, "outputs/report-pmtiles/sarN-obsdens-layers.rds")
+# stick obsdens and spdens together
+map_100km = st_join(hex_list$obsdens_all_100km, hex_list$spdens_all_100km)
+map_50km = st_join(hex_list$obsdens_all_50km, hex_list$spdens_all_50km)
+map_25km = st_join(hex_list$obsdens_all_25km, hex_list$spdens_all_25km)
+map_10km = st_join(hex_list$obsdens_all_10km, hex_list$spdens_all_10km)
+map_5km = st_join(hex_list$obsdens_all_5km, hex_list$spdens_all_5km)
 
-## RICHNESS --------------------------------------------------------------------
+# all_list = list(all_5km, all_10km, all_25km, all_50km, all_100km)
+# names(all_list) = c("all_5km", "all_10km", "all_25km", "all_50km", "all_100km")
+map_list = list(map_5km, map_10km, map_25km, map_50km, map_100km)
+names(map_list) = c("map_5km", "map_10km", "map_25km", "map_50km", "map_100km")
 
-for (res in resolutions) {
+for(i in 1:length(map_list)){
+  # st_write(all_list[[i]], paste0("outputs/report-pmtiles/SF/alltaxa_", resolutions[i]/1000, "km.shp"))
+  # st_write(map_list[[i]], paste0("outputs/report-pmtiles/SF/SAR_", resolutions[i]/1000, "km.shp"))
+  # st_write(map_list[[i]], paste0("outputs/report-pmtiles/SF/SARprov_", resolutions[i]/1000, "km.shp"))
+  st_write(map_list[[i]], paste0("outputs/report-pmtiles/SF/invasives_", resolutions[i]/1000, "km.shp"))
   
-  # make the hex grid
-  hex <- st_make_grid(bc_albers, cellsize = res, square = FALSE)
-  hex <- st_sf(hex_id = 1:length(hex), geometry = hex)
-  hex <- hex[st_intersects(hex, bc_albers, sparse = FALSE), ]
-  hex_join = st_join(wt_albers, hex, join = st_intersects)
-  hex_sr = hex_join |>
-    group_by(hex_id) |>
-    distinct(scientific_name) |>
-    summarize("n_sp" = n())
-  hex = left_join(hex, hex_sr, by = "hex_id") |> select("n_sp")
-  hex_wgs <- st_transform(hex, 4326)
-  hex_list[[paste0(res/1000, 'km')]] <- hex_wgs
 }
-names(hex_list)[6:10] <- paste0("sarN-spdens-", names(hex_list)[6:10])
-names(hex_list) <- gsub("spdens-sarN-obsdens-", "sarN-spdens-", names(hex_list))
 
-# save rds
-saveRDS(hex_list, "outputs/report-pmtiles/sarN-hex.rds")
-
-
-
-hex_list = readRDS("outputs/report-pmtiles/sarN-hex.rds")
-
-## Species at risk (Provincial)
-
-sarBC = splist |> filter(BC.List %in% c("Blue", "Red"))
-inat_sarBC = inat_sf |>
-  filter(scientific_name %in% sarBC$Scientific.Name)
+# make a cloud-optimized version 
+for(i in 2:length(map_list)){
+  # pmtiles::pm_create(all_list[[i]], 
+  #                    paste0("outputs/report-pmtiles/", names(all_list)[i], ".pmtiles"), 
+  #                    layer_name = names(all_list)[i])
+  # pmtiles::pm_create(map_list[[i]],
+  #                    paste0("outputs/report-pmtiles/SAR/", names(map_list)[i], ".pmtiles"),
+  #                    layer_name = names(map_list)[i])
+  # pmtiles::pm_create(map_list[[i]],
+  #                    paste0("outputs/report-pmtiles/SARprov/", names(map_list)[i], ".pmtiles"),
+  #                    layer_name = names(map_list)[i])
+  pmtiles::pm_create(map_list[[i]],
+                     paste0("outputs/report-pmtiles/invasives/", names(map_list)[i], ".pmtiles"),
+                     layer_name = names(map_list)[i])
+}
